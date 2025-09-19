@@ -1,0 +1,41 @@
+{
+  "name": "kids-server",
+  "version": "1.0.0",
+  "description": "this is simple kids DNS server that protect your kids to block access suspisius/harmfull  website/content just configur this dns as default on your kids device",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "kids-server"
+  },
+  "keywords": [
+    "kids-server.simple",
+    "dns",
+    "server",
+    "kids",
+    "block",
+    "harmfull",
+    "website",
+    "content",
+    "protect",
+    "device",
+    "safe",
+    "security",
+    "internet",
+    "parental-control",
+    "family-friendly",
+    "filtering",
+    "child-safety"
+  ],
+  "author": "Mr Lutera",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.12.2",
+    "crypto": "^1.0.1",
+    "express": "^5.1.0",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1"
+  }
+}
