@@ -71,6 +71,10 @@ const isKeyValid = (device) => {
   return !device.expDate || Date.now() < new Date(device.expDate).getTime();
 };
 
+app.get("/", (req, res) => {
+    res.send("Kids Server is running");
+});
+
 app.post("/device", async (req, res) => {
   const { key, expDate } = req.body;
 
