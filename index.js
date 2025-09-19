@@ -14,36 +14,31 @@ const io = socketIo(server, {
   },
   pingTimeout: 30000,
   pingInterval: 25000,
-  maxHttpBufferSize: 5e5, // 500KB
-  transports: ["websocket", "polling"], // prefer websocket
+  maxHttpBufferSize: 5e5,
+  transports: ["websocket", "polling"],
 });
 
 const PORT = process.env.PORT || 3000;
 const DEVICES_FILE = path.join(__dirname, "devices.json");
 
-// Middleware optimizations
-app.use(express.json({ limit: "500kb" })); // Limit JSON size
+app.use(express.json({ limit: "500kb" }));
 app.use(express.urlencoded({ extended: true, limit: "500kb" }));
 
-// Use Maps for faster lookups
 let devices = [];
 const deviceByKey = new Map();
 const deviceByDeviceId = new Map();
 const pendingRequests = new Map();
-
-// Optimized ID generation
 const generateId = () => crypto.randomBytes(8).toString("hex");
+const generateDeviceId = () => `dev_${crypto.randomBytes(12).toString("hex")}`;
 
-// Memory cache with periodic persistence
 let cacheDirty = false;
-const CACHE_SAVE_INTERVAL = 5000; // 5 seconds
+const CACHE_SAVE_INTERVAL = 5000;
 
 const loadDevices = async () => {
   try {
     const data = await fs.readFile(DEVICES_FILE, "utf8");
     devices = JSON.parse(data);
-    
-    // Populate lookup maps
+
     devices.forEach(device => {
       deviceByKey.set(device.key, device);
       if (device.deviceid) {
@@ -70,14 +65,12 @@ const saveDevices = async () => {
   }
 };
 
-// Periodic save to reduce I/O
 setInterval(saveDevices, CACHE_SAVE_INTERVAL);
 
 const isKeyValid = (device) => {
   return !device.expDate || Date.now() < new Date(device.expDate).getTime();
 };
 
-// Optimized endpoint handlers
 app.post("/device", async (req, res) => {
   const { key, expDate } = req.body;
 
@@ -90,21 +83,24 @@ app.post("/device", async (req, res) => {
   }
 
   const id = generateId();
+  const deviceid = generateDeviceId();
   const newDevice = {
     id,
     key,
+    deviceid,
     expDate: expDate || null,
     socketid: null,
-    deviceid: null,
   };
 
   devices.push(newDevice);
   deviceByKey.set(key, newDevice);
+  deviceByDeviceId.set(deviceid, newDevice);
   cacheDirty = true;
 
   res.status(201).json({
     message: "Device key created successfully",
     id,
+    deviceid,
   });
 });
 
@@ -123,7 +119,6 @@ app.delete("/device/:key", async (req, res) => {
     io.sockets.sockets.get(device.socketid)?.disconnect();
   }
 
-  // Remove from all data structures
   const index = devices.findIndex(d => d.key === key);
   if (index !== -1) devices.splice(index, 1);
   deviceByKey.delete(key);
@@ -134,10 +129,10 @@ app.delete("/device/:key", async (req, res) => {
 });
 
 app.post("/register", async (req, res) => {
-  const { deviceId, key } = req.body;
+  const { key } = req.body;
 
-  if (!deviceId || !key) {
-    return res.status(400).json({ error: "Device ID and key are required" });
+  if (!key) {
+    return res.status(400).json({ error: "Key is required" });
   }
 
   const device = deviceByKey.get(key);
@@ -149,21 +144,10 @@ app.post("/register", async (req, res) => {
     return res.status(400).json({ error: "Key has expired" });
   }
 
-  if (device.deviceid && device.deviceid !== deviceId) {
-    return res
-      .status(409)
-      .json({ error: "Key already registered to another device" });
-  }
-
-  if (device.deviceid === deviceId) {
-    return res.status(200).json({ message: "Device already registered" });
-  }
-
-  device.deviceid = deviceId;
-  deviceByDeviceId.set(deviceId, device);
-  cacheDirty = true;
-
-  res.json({ message: "Device registered successfully" });
+  res.json({ 
+    message: "Device registered successfully",
+    deviceid: device.deviceid
+  });
 });
 
 app.post("/send", async (req, res) => {
@@ -193,14 +177,13 @@ app.post("/send", async (req, res) => {
       const timeout = setTimeout(() => {
         pendingRequests.delete(requestId);
         reject(new Error("Device did not respond in time"));
-      }, 4500); // 4.5s timeout (slightly less than client timeout)
+      }, 4500);
 
       pendingRequests.set(requestId, (response) => {
         clearTimeout(timeout);
         resolve(response);
       });
 
-      // Send the message to the device
       io.to(device.socketid).emit("insert-sms", {
         destNumber,
         textMessage,
@@ -222,7 +205,6 @@ app.post("/send", async (req, res) => {
   }
 });
 
-// Socket.IO optimizations
 io.use((socket, next) => {
   const { deviceId } = socket.handshake.auth;
 
@@ -259,17 +241,15 @@ io.on("connection", (socket) => {
     }
   });
 
-  // Optimized heartbeat
   let lastHeartbeat = Date.now();
   const heartbeatCheck = setInterval(() => {
-    if (Date.now() - lastHeartbeat > 30000) { // 30s timeout
+    if (Date.now() - lastHeartbeat > 30000) {
       socket.disconnect(true);
     }
-  }, 10000); // Check every 10s
+  }, 10000);
 
   socket.on("heartbeat", (data) => {
     lastHeartbeat = Date.now();
-    // No console.log in production for performance
   });
 
   socket.on("disconnect", (reason) => {
@@ -283,7 +263,6 @@ io.on("connection", (socket) => {
   });
 });
 
-// Startup and shutdown
 const startServer = async () => {
   try {
     await loadDevices();
@@ -299,7 +278,6 @@ const startServer = async () => {
 process.on("SIGINT", async () => {
   console.log("Shutting down server...");
 
-  // Clear all socket IDs on shutdown
   devices.forEach(device => {
     device.socketid = null;
   });
@@ -311,7 +289,6 @@ process.on("SIGINT", async () => {
   });
 });
 
-// Handle uncaught exceptions to prevent crashes
 process.on("uncaughtException", (error) => {
   console.error("Uncaught Exception:", error);
 });
